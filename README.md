@@ -3,9 +3,9 @@
 [Description]
 
 ## Group Members
-- Chamee Nernginn: jd19@fsu.edu
-- Miles Burkart: js19@fsu.edu
-- Upi Shanker: ab19@fsu.edu
+- Chamee Nernginn
+- Miles Burkart
+- Upi Shanker
 ## Division of Labor
 
 ### Part 1: System Call Tracing
