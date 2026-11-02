@@ -1,0 +1,42 @@
+Read steps before attempting
+do this ASAP, as of writing since 2 hours, it is still compiling in the background
+
+1. Install required Dependencies
+
+sudo apt update
+
+sudo apt install -y build-essential libncurses-dev libssl-dev libelf-dev bison flex bc dwarves wget sz-utils rsync cpio libdw-dev zlib1g-dev
+
+2. Download Linux Kernel
+have terminal go to downloads (/Downloads)
+wget -c https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.16.12.tar.sz
+sudo tar -xf linux-6.16.12.tar.sz -C /usr/src/
+sudo chown -R "$USER":"$(id -gn)" /usr/src/linux-6.16.12
+ln -s /usr/src/linux-6.116.12 ~/linux-6.16.12
+
+3. Download the zipfile in this folder, should be about 6 files, copy each one and replace their respective file. Their location should be as listed
+linux-6.16.12/syscalls
+linux-6.16.12/arch/x86/entry/syscalls/syscalls_64.tbl
+linux-6.16.12/include/include/syscalls.h
+linux-6.16.12/Makefile
+
+4. Configure Kernel
+in the linux-6.16.12 directory
+
+cp /boot/config-$(uname -r) .config
+make olddefconfig
+make menuconfig
+
+Exit the menuconfig (I pressed esc twice)
+
+scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
+scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
+make olddefconfig
+
+5. Compile the kernel 
+IMPORTANT, I used "make -j1" because of my insufficient memory, but if your VM has at least 8 gbs of ram AND 2 CPU processors, you can do "make -j2", which makes it compile faster
+
+6. install the Kernel 
+sudo make modules_install
+sudo make install
+sudo update-grub
