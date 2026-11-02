@@ -6,6 +6,7 @@ do this ASAP, as of writing since 2 hours, it is still compiling in the backgrou
 sudo apt update
 
 sudo apt install -y build-essential libncurses-dev libssl-dev libelf-dev bison flex bc dwarves wget sz-utils rsync cpio libdw-dev zlib1g-dev
+sudo apt install -y gawk
 
 2. Download Linux Kernel
 have terminal go to downloads (/Downloads)
@@ -36,7 +37,9 @@ make olddefconfig
 5. Compile the kernel 
 IMPORTANT, I used "make -j1" because of my insufficient memory, but if your VM has at least 8 gbs of ram AND 2 CPU processors, you can do "make -j2", which makes it compile faster
 
-6. install the Kernel 
+If you have the time and resources to wait, I recommended giving your VM at least 8 gb of memory and 2 cpu processors for the ability to do make -j2, took about 2 hours to compile after removing every error, vs the 4+ hours of -j1
+
+6. Install the Kernel 
 sudo make modules_install
 sudo make install
 sudo update-grub
