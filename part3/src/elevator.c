@@ -16,7 +16,7 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 
-#include "../list/list.h"
+#include "list.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Miles Burkart");
