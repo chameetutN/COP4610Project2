@@ -1,5 +1,5 @@
 obj-m += elevator.o
-elevator-objs := src/elevator.o
+elevator-objs := src/elevator.o list/list.o
 
 PWD := $(CURDIR)
 KDIR ?= /lib/modules/$(shell uname -r)/build

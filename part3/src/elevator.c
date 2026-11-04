@@ -10,12 +10,13 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
-#include <linux/list.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+
+#include "../list/list.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Miles Burkart");
@@ -58,7 +59,6 @@ struct pet {
 	int type;
 	int start_floor;
 	int dest_floor;
-	struct list_head list;
 };
 
 struct elevator {
@@ -66,14 +66,12 @@ struct elevator {
 	bool stopping;		/* stop_elevator() called, still unloading */
 	int current_floor;
 	int direction;		/* +1 up, -1 down */
-	int num_pets;
 	int load;		/* lbs */
-	struct list_head pets;	/* pets on board */
+	List pets;		/* struct pet *, pets on board */
 };
 
 struct floor {
-	int num_waiting;
-	struct list_head waiting;	/* FIFO queue of pets */
+	List waiting;		/* struct pet *, FIFO queue */
 };
 
 static struct elevator elevator;
@@ -94,40 +92,37 @@ static struct floor *floor_at(int floor_num)
 
 static bool pet_fits(const struct pet *pet)
 {
-	return elevator.num_pets < MAX_PETS &&
+	return elevator.pets.length < MAX_PETS &&
 	       elevator.load + pet_weight[pet->type] <= MAX_WEIGHT;
+}
+
+static bool anyone_headed_to(int floor_num)
+{
+	ListNode *node;
+
+	list_foreach(node, &elevator.pets)
+		if (((struct pet *)node->value)->dest_floor == floor_num)
+			return true;
+	return false;
 }
 
 static bool anyone_to_unload(void)
 {
-	struct pet *pet;
-
-	list_for_each_entry(pet, &elevator.pets, list)
-		if (pet->dest_floor == elevator.current_floor)
-			return true;
-	return false;
+	return anyone_headed_to(elevator.current_floor);
 }
 
 /* Pets board strictly FIFO, so only the front of the queue matters. */
 static bool anyone_to_load(void)
 {
-	struct floor *f = floor_at(elevator.current_floor);
-	struct pet *front;
+	struct pet *front = list_peekfront(&floor_at(elevator.current_floor)->waiting);
 
-	if (elevator.stopping || list_empty(&f->waiting))
-		return false;
-	front = list_first_entry(&f->waiting, struct pet, list);
-	return pet_fits(front);
+	return !elevator.stopping && front && pet_fits(front);
 }
 
 static bool is_target(int floor_num)
 {
-	struct pet *pet;
-
-	list_for_each_entry(pet, &elevator.pets, list)
-		if (pet->dest_floor == floor_num)
-			return true;
-	return !elevator.stopping && floor_at(floor_num)->num_waiting > 0;
+	return anyone_headed_to(floor_num) ||
+	       (!elevator.stopping && floor_at(floor_num)->waiting.length > 0);
 }
 
 static bool target_in_direction(int dir)
@@ -158,13 +153,18 @@ static int choose_direction(void)
 static void unload_and_load(void)
 {
 	struct floor *f = floor_at(elevator.current_floor);
-	struct pet *pet, *tmp;
+	ListNode *prev = NULL, *node = elevator.pets.first;
+	struct pet *pet;
 
-	list_for_each_entry_safe(pet, tmp, &elevator.pets, list) {
-		if (pet->dest_floor != elevator.current_floor)
+	while (node) {
+		pet = node->value;
+		if (pet->dest_floor != elevator.current_floor) {
+			prev = node;
+			node = node->next;
 			continue;
-		list_del(&pet->list);
-		elevator.num_pets--;
+		}
+		node = node->next;
+		list_remove_next(&elevator.pets, prev);
 		elevator.load -= pet_weight[pet->type];
 		total_serviced++;
 		kfree(pet);
@@ -173,14 +173,11 @@ static void unload_and_load(void)
 	if (elevator.stopping)
 		return;
 
-	while (!list_empty(&f->waiting)) {
-		pet = list_first_entry(&f->waiting, struct pet, list);
+	while ((pet = list_peekfront(&f->waiting))) {
 		if (!pet_fits(pet))
 			break;	/* FIFO: nobody may cut in line */
-		list_move_tail(&pet->list, &elevator.pets);
-		f->num_waiting--;
+		list_transfer_front(&elevator.pets, &f->waiting);
 		total_waiting--;
-		elevator.num_pets++;
 		elevator.load += pet_weight[pet->type];
 	}
 }
@@ -200,7 +197,7 @@ static int elevator_run(void *data)
 			continue;
 		}
 
-		if (elevator.stopping && elevator.num_pets == 0) {
+		if (elevator.stopping && elevator.pets.length == 0) {
 			elevator.state = OFFLINE;
 			elevator.stopping = false;
 			mutex_unlock(&elevator_lock);
@@ -253,7 +250,6 @@ static int start_elevator(void)
 		elevator.stopping = false;
 		elevator.current_floor = MIN_FLOOR;
 		elevator.direction = 1;
-		elevator.num_pets = 0;
 		elevator.load = 0;
 	}
 	mutex_unlock(&elevator_lock);
@@ -278,8 +274,11 @@ static int issue_request(int start_floor, int destination_floor, int type)
 	pet->dest_floor = destination_floor;
 
 	mutex_lock(&elevator_lock);
-	list_add_tail(&pet->list, &floor_at(start_floor)->waiting);
-	floor_at(start_floor)->num_waiting++;
+	if (list_append(&floor_at(start_floor)->waiting, pet)) {
+		mutex_unlock(&elevator_lock);
+		kfree(pet);
+		return -ENOMEM;
+	}
 	total_waiting++;
 	mutex_unlock(&elevator_lock);
 	return 0;
@@ -307,7 +306,7 @@ static void print_pet(struct seq_file *m, const struct pet *pet)
 
 static int elevator_show(struct seq_file *m, void *v)
 {
-	struct pet *pet;
+	ListNode *node;
 	int f;
 
 	mutex_lock(&elevator_lock);
@@ -316,20 +315,20 @@ static int elevator_show(struct seq_file *m, void *v)
 	seq_printf(m, "Current floor: %d\n", elevator.current_floor);
 	seq_printf(m, "Current load: %d lbs\n", elevator.load);
 	seq_puts(m, "Elevator status:");
-	list_for_each_entry(pet, &elevator.pets, list)
-		print_pet(m, pet);
+	list_foreach(node, &elevator.pets)
+		print_pet(m, node->value);
 	seq_puts(m, "\n\n");
 
 	for (f = MAX_FLOOR; f >= MIN_FLOOR; f--) {
 		seq_printf(m, "[%c] Floor %d: %d",
 			   f == elevator.current_floor ? '*' : ' ',
-			   f, floor_at(f)->num_waiting);
-		list_for_each_entry(pet, &floor_at(f)->waiting, list)
-			print_pet(m, pet);
+			   f, (int)floor_at(f)->waiting.length);
+		list_foreach(node, &floor_at(f)->waiting)
+			print_pet(m, node->value);
 		seq_putc(m, '\n');
 	}
 
-	seq_printf(m, "\nNumber of pets: %d\n", elevator.num_pets);
+	seq_printf(m, "\nNumber of pets: %d\n", (int)elevator.pets.length);
 	seq_printf(m, "Number of pets waiting: %d\n", total_waiting);
 	seq_printf(m, "Number of pets serviced: %d\n", total_serviced);
 
@@ -351,14 +350,9 @@ static const struct proc_ops elevator_fops = {
 
 /* ---------- module init / exit ---------- */
 
-static void free_pet_list(struct list_head *head)
+static void free_pet(void *pet)
 {
-	struct pet *pet, *tmp;
-
-	list_for_each_entry_safe(pet, tmp, head, list) {
-		list_del(&pet->list);
-		kfree(pet);
-	}
+	kfree(pet);
 }
 
 static int __init elevator_init(void)
@@ -368,11 +362,9 @@ static int __init elevator_init(void)
 	elevator.state = OFFLINE;
 	elevator.current_floor = MIN_FLOOR;
 	elevator.direction = 1;
-	INIT_LIST_HEAD(&elevator.pets);
-	for (i = 0; i < NUM_FLOORS; i++) {
-		floors[i].num_waiting = 0;
-		INIT_LIST_HEAD(&floors[i].waiting);
-	}
+	list_init(&elevator.pets);
+	for (i = 0; i < NUM_FLOORS; i++)
+		list_init(&floors[i].waiting);
 
 	proc_entry = proc_create(ENTRY_NAME, PERMS, NULL, &elevator_fops);
 	if (!proc_entry)
@@ -403,9 +395,9 @@ static void __exit elevator_exit(void)
 	kthread_stop(elevator_thread);
 	proc_remove(proc_entry);
 
-	free_pet_list(&elevator.pets);
+	list_clear(&elevator.pets, free_pet);
 	for (i = 0; i < NUM_FLOORS; i++)
-		free_pet_list(&floors[i].waiting);
+		list_clear(&floors[i].waiting, free_pet);
 
 	pr_info("elevator: unloaded\n");
 }
