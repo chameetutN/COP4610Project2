@@ -205,9 +205,9 @@ isn't shown there.
 
 ### Upi Shanker
 
-| Date       | Work Completed / Notes |
-|------------|------------------------|
-| TODO       | TODO: add your work; none of it appears in the commit history |
+| Date       | Work Completed / Notes          |
+|------------|---------------------------------|
+| 2026-11-04       | Tested files and updated Readme |
 
 ## Meetings
 Document in-person meetings, their purpose, and what was discussed.
