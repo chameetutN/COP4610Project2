@@ -184,8 +184,6 @@ Wait for `/proc/elevator` to show `OFFLINE` before running `rmmod`, so that the 
 finish unloading its pets.
 
 ## Development Log
-Entries for Chamee and Miles come from the commit history. Each member should add any work that
-isn't shown there.
 
 ### Chamee Nernginn
 
@@ -210,7 +208,6 @@ isn't shown there.
 | 2026-11-04       | Tested files and updated Readme |
 
 ## Meetings
-Document in-person meetings, their purpose, and what was discussed.
 
 | Date    | Attendees          | Topics Discussed                     | Outcomes / Decisions |
 |---------|--------------------|--------------------------------------|----------------------|
