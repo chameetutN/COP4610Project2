@@ -67,7 +67,7 @@ elevator/
 │       └── my_timer.c
 └── part3/
     ├── Makefile
-    ├── syscalls.c        TODO: required, not committed yet
+    ├── syscalls.c
     ├── testing.md
     ├── src/
     │   ├── elevator.c
