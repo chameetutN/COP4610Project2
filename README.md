@@ -107,12 +107,13 @@ output.
 ```bash
 cd part1
 make
+make traces
 ```
 This builds the `empty` and `part1` executables in `part1/`.
 
 ### Execution
 ```bash
-make traces
+wc -l empty.trace part1.trace
 ```
 This runs both programs under `strace` and writes `empty.trace` and `part1.trace`.
 
